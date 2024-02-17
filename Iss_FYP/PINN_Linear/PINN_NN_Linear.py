@@ -94,7 +94,8 @@ def custom_loss_with_params(external_work, normalisation_params, element_vol):
         # Calculate Loss: 
         #   Difference between internal (strain energy) and external work (F*d)
         Energy_difference = tf.abs((external_work[batch_no])-((strain_energy)))
-        print('Energy difference:               ',Energy_difference[0][0].numpy())
+        print('Energy difference:               ',Energy_difference[0][0].numpy()); print(' ')
+
         return Energy_difference
 
     return custom_loss
