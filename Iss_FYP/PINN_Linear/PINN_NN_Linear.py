@@ -19,24 +19,24 @@ N = 864  # no. of elements in each specimen - i.e. batch size
 Exx_data = df.iloc[:, 1].values.astype('float32') # Exx size: (8640,1)
 Eyy_data = df.iloc[:, 3].values.astype('float32') # Eyy size: (8640,1)
 Exy_data = df.iloc[:, 5].values.astype('float32') # Exy size: (8640,1)
-element_volume = df.iloc[:, 8].values.astype('float32') # Volume of each element for volume integral size: (8640,1)
+element_vol = df.iloc[:N, 8].values.astype('float32') # Volume of each element for volume integral size: (8640,1)
 P_data = df.iloc[0:10, 12].astype('float32')   # P size: (11,1)
 Ux_data = df.iloc[0:10, 11].astype('float32')  # Ux size: (11,1)
 
 # Combining features into one array
-inputs = tf.stack([Exx_data, Eyy_data, Exy_data, element_volume], axis=1) # size: (8640, 4)
+inputs = tf.stack([Exx_data, Eyy_data, Exy_data], axis=1) # size: (8640, 3)
 
-# Extracting scaling values to scale between (0,1)
+# Extracting scaling values to scale between (0,1) and storing them
 #   Note: we are scaling by the max/min value of all 10 batches, and not of each batch
 max_inputs = tf.reduce_max(inputs, axis=0)
 min_inputs = tf.reduce_min(inputs, axis=0)
-
-# Scaling inputs
-scaled_inputs = (inputs-min_inputs)/(max_inputs-min_inputs)
-normalisation_params = tf.Variable(tf.zeros((2,4)), trainable=False)
+normalisation_params = tf.Variable(tf.zeros((2,3)), trainable=False)
 normalisation_params.assign_add([max_inputs, min_inputs])
 print('Shape of normalisation parameters: ', normalisation_params.shape)
 print('Normalisation parameter values: ', normalisation_params.numpy())
+
+# Scaling inputs
+scaled_inputs = (inputs-min_inputs)/(max_inputs-min_inputs)
 
 # Calculating external work
 #   This gives a vector of external work values at each time step/batch size: (11, 1)
@@ -50,7 +50,7 @@ print('External work: ', external_work)
 #Designing custom loss function
 
 # Wrapper function - lets you input global variables into loss function
-def custom_loss_with_params(external_work, normalisation_params): 
+def custom_loss_with_params(external_work, normalisation_params, element_vol): 
 
     # Loss function
     def custom_loss(inputs_scaled, L):   
@@ -68,8 +68,9 @@ def custom_loss_with_params(external_work, normalisation_params):
         Exx = array_inputs[:,0]
         Eyy = array_inputs[:,1]
         Exy = array_inputs[:,2]
-        vol = array_inputs[:,3] 
-        vol_tf = tf.convert_to_tensor(vol, dtype=tf.float32)
+        
+        # Convert volume array to tensor
+        vol = tf.convert_to_tensor(element_vol, dtype=tf.float32)
 
         # Calculate epsilon and its transpose
         epsilon = tf.stack([Exx, Eyy, Exy], axis=1) # size: (N, 3)
@@ -84,7 +85,7 @@ def custom_loss_with_params(external_work, normalisation_params):
 
         # Calculate strain energy: 
         #   Matrix multiply E_T * C * E, and dot multiply by element volume, outputting a scalar
-        strain_energy = 0.5 * tf.tensordot(vol_tf , tf.matmul(epsilonT, tf.matmul(C, epsilon) ) ,1) / n # scalar value
+        strain_energy = 0.5 * tf.tensordot(vol , tf.matmul(epsilonT, tf.matmul(C, epsilon) ) ,1) / n # scalar value
         print('Internal work (strain energy):   ', strain_energy[0][0].numpy())
         print('External work (F x d):           ', external_work[batch_no]) 
             
@@ -124,7 +125,7 @@ def Create_Model(activ, Hidden_layers, node_num1, node_num2):
 
     # Add the first hidden layer with the specified number of nodes and activation function
     # Input shape is set to [4] to match the shape of the input data
-    model.add(tf.keras.layers.Dense(node_num1, activation=activ, input_shape=[4], name='hidden_layer_0'))
+    model.add(tf.keras.layers.Dense(node_num1, activation=activ, input_shape=[3], name='hidden_layer_0'))
 
     #model.add(tf.keras.layers.BatchNormalization()) # performs normalisation on the input data, and normalises the output during training 
     
@@ -150,7 +151,8 @@ model = Create_Model(activ='linear', Hidden_layers=2, node_num1=20, node_num2=20
 model.summary()
 model.compile(optimizer = tf.keras.optimizers.legacy.Adam(learning_rate = 0.001), 
           loss = custom_loss_with_params(external_work = external_work, 
-                                         normalisation_params = normalisation_params))
+                                         normalisation_params = normalisation_params,
+                                         element_vol=element_vol))
 
 
 
