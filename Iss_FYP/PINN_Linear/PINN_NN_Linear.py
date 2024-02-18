@@ -201,7 +201,7 @@ for epoch in range(N_epochs):
     loss_list.append(average_loss) # track loss of all epochs for plotting
 
 
- 
+
 
 #%%########################################################################################################
 # Plot training loss history
