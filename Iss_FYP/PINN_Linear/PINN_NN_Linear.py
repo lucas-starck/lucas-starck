@@ -32,8 +32,7 @@ max_inputs = tf.reduce_max(inputs, axis=0)
 min_inputs = tf.reduce_min(inputs, axis=0)
 normalisation_params = tf.Variable(tf.zeros((2,3)), trainable=False)
 normalisation_params.assign_add([max_inputs, min_inputs])
-print('Shape of normalisation parameters: ', normalisation_params.shape)
-print('Normalisation parameter values: ', normalisation_params.numpy())
+print('Normalisation parameters: '); print(normalisation_params.numpy()); print('')
 
 # Scaling inputs
 scaled_inputs = (inputs-min_inputs)/(max_inputs-min_inputs)
@@ -41,7 +40,7 @@ scaled_inputs = (inputs-min_inputs)/(max_inputs-min_inputs)
 # Calculating external work
 #   This gives a vector of external work values at each time step/batch size: (11, 1)
 external_work = 0.5 * (P_data * Ux_data)
-print('External work: ', external_work)
+print('External work: '); print(external_work); print('')
 
 
 
@@ -50,53 +49,73 @@ print('External work: ', external_work)
 #Designing custom loss function
 
 # Wrapper function - lets you input global variables into loss function
-def custom_loss_with_params(external_work, normalisation_params, element_vol): 
+def custom_loss_with_params(external_work, normalisation_params, element_vol, N_per_batch): 
 
     # Loss function
-    def custom_loss(inputs_scaled, L):   
-            
-        # Initialise loss function components
-        strain_energy = 0.
-        n = float(len(inputs_scaled)) # no. elements
+    def custom_loss(inputs_scaled, L):  
 
         # Un-scaling inputs for physical calculations
         max_inputs, min_inputs = tf.split(normalisation_params, 2)
         inputs_unscaled = inputs_scaled * (max_inputs - min_inputs) + min_inputs
-
-        # Separating inputs into variables
-        array_inputs=np.array(inputs_unscaled)
-        Exx = array_inputs[:,0]
-        Eyy = array_inputs[:,1]
-        Exy = array_inputs[:,2]
-        
-        # Convert volume array to tensor
-        vol = tf.convert_to_tensor(element_vol, dtype=tf.float32)
-
-        # Calculate epsilon and its transpose
-        epsilon = tf.stack([Exx, Eyy, Exy], axis=1) # size: (N, 3)
-        epsilon = tf.reshape(epsilon , (epsilon.shape[0],3,1))
-        epsilonT = tf.transpose(epsilon,perm=[0,2,1]) # size: (3, N)
-
-        # Calculate L transpose from input L
-        LT = tf.transpose(L,perm=[0,2,1])
-        
-        # Calculate C = L*LT
-        C = tf.matmul(L, LT) # size: (N,3,3) 
-
-        # Calculate strain energy: 
-        #   Matrix multiply E_T * C * E, and dot multiply by element volume, outputting a scalar
-        strain_energy = 0.5 * tf.tensordot(vol , tf.matmul(epsilonT, tf.matmul(C, epsilon) ) ,1) / n # scalar value
-        print('Internal work (strain energy):   ', strain_energy[0][0].numpy())
-        print('External work (F x d):           ', external_work[batch_no]) 
             
-        # External work seems to be a tf. tensor and strain energy is a Keras tensor - not sure if this matters?
-    
-        # Calculate Loss: 
-        #   Difference between internal (strain energy) and external work (F*d)
-        Energy_difference = tf.abs((external_work[batch_no])-((strain_energy)))
-        print('Energy difference:               ',Energy_difference[0][0].numpy()); print(' ')
+        # Convert volume array to tensor
+        vol = tf.convert_to_tensor(element_vol, dtype=tf.float32) # (N_per_batch,)
 
-        return Energy_difference
+        # Initialise total energy difference
+        Energy_difference_epoch = tf.constant([[0.]])
+
+        # Iterate over each Batch
+        for batch_idx in range(0, len(inputs_unscaled), N_per_batch): # (0, 864x10, 864)
+
+            print('Batch index: ',batch_idx)
+
+            # Define batch data
+            input_batch = inputs_unscaled[batch_idx:batch_idx+N_per_batch] # generates 1 batch of size N
+            L_batch = L[batch_idx:batch_idx+N_per_batch]
+            strain_energy_batch = 0.
+            n = float(N_per_batch) # no. elements
+            # convert batch index to batch number
+            if batch_idx == 0: # account for zero division
+                batch_number = 0 
+            else:
+                batch_number = int(batch_idx/N_per_batch) 
+                if batch_idx % N_per_batch != 0: # check that epoch size is divisible by batch size
+                    raise ValueError('The number of elements in the epoch',len(inputs_unscaled),'must be divisible by the number of elements in the batch',N_per_batch)
+            print('Batch number: ',batch_number)
+
+            # Separating input data into variables
+            array_inputs=np.array(input_batch) # do we need this?
+            Exx_batch = array_inputs[:,0]
+            Eyy_batch = array_inputs[:,1]
+            Exy_batch = array_inputs[:,2]
+
+            # Calculate epsilon and its transpose (for the batch)
+            epsilon_batch = tf.stack([Exx_batch, Eyy_batch, Exy_batch], axis=1) # size: (N, 3)
+            epsilon_batch = tf.reshape(epsilon_batch , (epsilon_batch.shape[0],3,1))
+            epsilonT_batch = tf.transpose(epsilon_batch,perm=[0,2,1]) # size: (3, N)
+
+            # Calculate L transpose from input L
+            LT_batch = tf.transpose(L_batch,perm=[0,2,1])
+        
+            # Calculate C = L*LT
+            C_batch = tf.matmul(L_batch, LT_batch) # size: (N,3,3) 
+
+            # Calculate strain energy for batch: 
+            #   Matrix multiply E_T * C * E, and dot multiply by element volume, outputting a scalar
+            strain_energy_batch = 0.5 * tf.tensordot(vol , tf.matmul(epsilonT_batch, tf.matmul(C_batch, epsilon_batch) ) ,1) / n # scalar value
+            print('Internal work (strain energy) - batch',batch_number,':', strain_energy_batch[0][0].numpy())
+            print('External work (F x d)         - batch',batch_number,':', external_work[batch_number]) 
+                
+            # Calculate Loss for batch: 
+            #   Difference between internal (strain energy) and external work (F*d)
+            Energy_difference_batch = tf.abs((external_work[batch_number])-((strain_energy_batch)))
+            print('Energy difference             - batch',batch_number,':',Energy_difference_batch[0][0].numpy()); print('') # print newline
+
+            # Add batch energy difference to total epoch energy difference
+            Energy_difference_epoch += Energy_difference_batch
+            print('Energy difference             - epoch   :',Energy_difference_epoch[0][0].numpy()); print(' ') # print newline
+
+        return Energy_difference_epoch
 
     return custom_loss
 
@@ -107,28 +126,12 @@ def custom_loss_with_params(external_work, normalisation_params, element_vol):
 # Creating ML Model
 
 def Create_Model(activ, Hidden_layers, node_num1, node_num2):
-    """
-    Creates a Keras sequential model with the specified number of hidden layers and nodes, 
-    with the given activation function for all layers except the output layer, which uses a linear activation.
-    
-    Args:
-        activ (str): the name of the activation function to use in all hidden layers
-        Hidden_layers (int): the number of hidden layers in the model with node_num2 nodes each. 
-                            Total_hidden_layers = Hidden_layers + 1
-        node_num1 (int): the number of nodes in the first hidden layer
-        node_num2 (int): the number of nodes in each subsequent hidden layer
-        
-    Returns:
-        model (tf.keras.Sequential): a Keras sequential model with the specified architecture
-    """
     
     model=tf.keras.Sequential()
 
     # Add the first hidden layer with the specified number of nodes and activation function
-    # Input shape is set to [4] to match the shape of the input data
+    # Input shape is set to match the shape of the input data
     model.add(tf.keras.layers.Dense(node_num1, activation=activ, input_shape=[3], name='hidden_layer_0'))
-
-    #model.add(tf.keras.layers.BatchNormalization()) # performs normalisation on the input data, and normalises the output during training 
     
     # Add additional hidden layers with the same number of nodes and activation function
     for j in range(Hidden_layers):
@@ -153,7 +156,8 @@ model.summary()
 model.compile(optimizer = tf.keras.optimizers.legacy.Adam(learning_rate = 0.001), 
           loss = custom_loss_with_params(external_work = external_work, 
                                          normalisation_params = normalisation_params,
-                                         element_vol=element_vol))
+                                         element_vol = element_vol,
+                                         N_per_batch = N))
 
 
 
@@ -162,7 +166,7 @@ model.compile(optimizer = tf.keras.optimizers.legacy.Adam(learning_rate = 0.001)
 # Train ML Model manually using train_on_batch
 
 # Initialise vars
-loss_list = [] 
+epoch_loss_list = [] 
 batch_size = N # Train on entire specimen element set (864)
 batches_per_epoch = scaled_inputs.shape[0] // batch_size # Number of time steps / data sets for that specimen
 N_epochs = 50
@@ -171,34 +175,13 @@ N_epochs = 50
 for epoch in range(N_epochs):
 
     total_loss = 0.0 # sum of loss of all batches in this epoch
-    print('Epoch number: ', epoch)
+    print('Epoch number: ', epoch) ; print('')
 
-    # Initialise counter to track the batch number. Note: it gets updated during the run of a loss function
-    custom_loss_calls = tf.Variable(0, trainable=False, dtype=tf.int32) 
+    # Train all 10 timesteps at once (one batch of 8640 records)
+    loss = model.train_on_batch(x=scaled_inputs, y=scaled_inputs, reset_metrics=True)
 
-    # Iterate over each Batch
-    for batch_idx in range(0, len(scaled_inputs), batch_size): #(0, 864x10, 864)
-
-        batch_no = custom_loss_calls.numpy()
-        print('Batch number: ',batch_no)
-
-        # Define inputs X (and targets Y)
-        x_batch = scaled_inputs[batch_idx:batch_idx+batch_size] # generates 1 batch of size N as an input to the model
-        y_batch = x_batch # model loss func doesn't use targets, so use dummy target values
-
-        # Train on batch 
-        loss = model.train_on_batch(x=x_batch, y=y_batch, reset_metrics=True)
-        
-        # Update loss of entire Epoch
-        total_loss += loss
-
-        # Update loss / batch counter
-        custom_loss_calls.assign_add(1)
-    
-    # Calculate average loss per batch 
-    average_loss = tf.sqrt(tf.square(total_loss) )#/ batches_per_epoch)
-    print('Avg loss per batch: ', average_loss.numpy())
-    loss_list.append(average_loss) # track loss of all epochs for plotting
+    # Track loss of all epochs for plotting
+    epoch_loss_list.append(loss) 
 
 
 
@@ -207,8 +190,8 @@ for epoch in range(N_epochs):
 # Plot training loss history
     
 N_epochs_range  = np.arange(1, N_epochs + 1)
-plt.plot(N_epochs_range, loss_list, label='Avg Batch Training Loss per Epoch')
-plt.ylabel('Sum of batch loss of epoch')
+plt.plot(N_epochs_range, epoch_loss_list, label='Training Loss per Epoch')
+plt.ylabel('Training loss (energy difference) = sum of batch losses')
 plt.xlabel('Epoch number')
 plt.title('Training loss plot')
 
