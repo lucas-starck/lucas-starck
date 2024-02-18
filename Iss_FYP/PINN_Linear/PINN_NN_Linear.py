@@ -5,6 +5,7 @@ import tensorflow as tf
 import os, sys, time
 import pandas as pd
 import matplotlib.pyplot as plt
+import timeit
 tf.config.run_functions_eagerly(True)
 
 
@@ -57,7 +58,7 @@ def custom_loss_with_params(external_work, normalisation_params, element_vol, N_
         # Un-scaling inputs for physical calculations
         max_inputs, min_inputs = tf.split(normalisation_params, 2)
         inputs_unscaled = inputs_scaled * (max_inputs - min_inputs) + min_inputs
-            
+        
         # Convert volume array to tensor
         vol = tf.convert_to_tensor(element_vol, dtype=tf.float32) # (N_per_batch,)
 
@@ -66,8 +67,6 @@ def custom_loss_with_params(external_work, normalisation_params, element_vol, N_
 
         # Iterate over each Batch
         for batch_idx in range(0, len(inputs_unscaled), N_per_batch): # (0, 864x10, 864)
-
-            print('Batch index: ',batch_idx)
 
             # Define batch data
             input_batch = inputs_unscaled[batch_idx:batch_idx+N_per_batch] # generates 1 batch of size N
@@ -166,13 +165,18 @@ model.compile(optimizer = tf.keras.optimizers.legacy.Adam(learning_rate = 0.001)
 # Train ML Model manually using train_on_batch
 
 # Initialise vars
-epoch_loss_list = [] 
+epoch_loss_list = []
+epoch_time_list = []
+epoch_time_cumsum = 0.
 batch_size = N # Train on entire specimen element set (864)
 batches_per_epoch = scaled_inputs.shape[0] // batch_size # Number of time steps / data sets for that specimen
-N_epochs = 50
+N_epochs = 500
 
 # Iterate over each Epoch
 for epoch in range(N_epochs):
+
+    # Start timer to record how long each epoch takes to run
+    epoch_start = timeit.default_timer() 
 
     total_loss = 0.0 # sum of loss of all batches in this epoch
     print('Epoch number: ', epoch) ; print('')
@@ -180,20 +184,39 @@ for epoch in range(N_epochs):
     # Train all 10 timesteps at once (one batch of 8640 records)
     loss = model.train_on_batch(x=scaled_inputs, y=scaled_inputs, reset_metrics=True)
 
-    # Track loss of all epochs for plotting
+    # Track loss and time of all epochs for plotting
     epoch_loss_list.append(loss) 
+    epoch_time_cumsum += float(timeit.default_timer() - epoch_start)
+    epoch_time_list.append(epoch_time_cumsum)
 
-
+    # Break training if runtime limit is exceeded
+    if epoch_time_cumsum > 25.:
+        break
 
 
 #%%########################################################################################################
 # Plot training loss history
-    
-N_epochs_range  = np.arange(1, N_epochs + 1)
-plt.plot(N_epochs_range, epoch_loss_list, label='Training Loss per Epoch')
-plt.ylabel('Training loss (energy difference) = sum of batch losses')
-plt.xlabel('Epoch number')
-plt.title('Training loss plot')
+
+fig = plt.figure()
+
+# Loss vs Epochs subplot
+fig1 = fig.add_subplot(2,1,1)
+N_epochs_range  = np.arange(1, len(epoch_loss_list) + 1)
+fig1.plot(N_epochs_range, epoch_loss_list)
+fig1.grid()
+fig1.set_ylabel('Training loss')
+fig1.set_xlabel('Epoch number')
+fig1.set_title('Training loss history')
+fig1.set_ylim((0,8e4))
+
+# Loss vs Runtime subplot
+fig2 = fig.add_subplot(2,1,2)
+fig2.plot(epoch_time_list, epoch_loss_list)
+fig2.grid()
+fig2.set_ylabel('Training loss')
+fig2.set_xlabel('Runtime')
+fig2.set_ylim((0,8e4))
+plt.tight_layout()
 
 
 
