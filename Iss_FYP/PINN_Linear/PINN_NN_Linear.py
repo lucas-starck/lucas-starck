@@ -162,7 +162,7 @@ model.compile(optimizer = tf.keras.optimizers.legacy.Adam(learning_rate = 0.001)
 # Train ML Model manually using train_on_batch
 
 # Initialise vars
-loss_list = []
+loss_list = [] 
 batch_size = N # Train on entire specimen element set (864)
 batches_per_epoch = scaled_inputs.shape[0] // batch_size # Number of time steps / data sets for that specimen
 N_epochs = 30
