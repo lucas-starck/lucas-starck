@@ -207,22 +207,22 @@ fig1.grid()
 fig1.set_ylabel('Training loss')
 fig1.set_xlabel('Epoch number')
 fig1.set_title('Training loss history')
-fig1.set_ylim((0,8e4))
+fig1.set_ylim((0,1e5))
 
 # Loss vs Runtime subplot
 fig2 = fig.add_subplot(2,1,2)
-fig2.plot(epoch_time_list, epoch_loss_list)
+fig2.semilogy(epoch_time_list, epoch_loss_list)
 fig2.grid()
 fig2.set_ylabel('Training loss')
 fig2.set_xlabel('Runtime')
-fig2.set_ylim((0,8e4))
+fig2.set_ylim((0,1e5))
 plt.tight_layout()
 
 
 
 
 #%%########################################################################################################
-# Getting output for last batch only (last time step)
+# Extracting output stress for batch 10
 
 '''    
     
@@ -262,3 +262,10 @@ np.savetxt(csv_file_path, numpy_array, delimiter=',')
 
 #loss = model.evaluate(inputs, inputs, verbose=0)
 '''
+
+
+
+
+#%%########################################################################################################
+# Extracting FEA stress output
+
