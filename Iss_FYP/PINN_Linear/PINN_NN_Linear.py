@@ -165,7 +165,7 @@ model.compile(optimizer = tf.keras.optimizers.legacy.Adam(learning_rate = 0.001)
 loss_list = [] 
 batch_size = N # Train on entire specimen element set (864)
 batches_per_epoch = scaled_inputs.shape[0] // batch_size # Number of time steps / data sets for that specimen
-N_epochs = 30
+N_epochs = 50
 
 # Iterate over each Epoch
 for epoch in range(N_epochs):
@@ -196,7 +196,7 @@ for epoch in range(N_epochs):
         custom_loss_calls.assign_add(1)
     
     # Calculate average loss per batch 
-    average_loss = tf.sqrt(tf.square(total_loss)/ batches_per_epoch)
+    average_loss = tf.sqrt(tf.square(total_loss) )#/ batches_per_epoch)
     print('Avg loss per batch: ', average_loss.numpy())
     loss_list.append(average_loss) # track loss of all epochs for plotting
 
@@ -208,9 +208,9 @@ for epoch in range(N_epochs):
     
 N_epochs_range  = np.arange(1, N_epochs + 1)
 plt.plot(N_epochs_range, loss_list, label='Avg Batch Training Loss per Epoch')
-#plt.plot  ( N_epochs, history.history['val_loss' ], label = 'Validation')
-#plt.title ('Training and validation loss')
-#plt.legend();
+plt.ylabel('Sum of batch loss of epoch')
+plt.xlabel('Epoch number')
+plt.title('Training loss plot')
 
 
 
