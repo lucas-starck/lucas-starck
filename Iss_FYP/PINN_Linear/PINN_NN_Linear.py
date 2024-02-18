@@ -269,3 +269,12 @@ np.savetxt(csv_file_path, numpy_array, delimiter=',')
 #%%########################################################################################################
 # Extracting FEA stress output
 
+# Load Field Output Report text data
+FEA_input = np.loadtxt(fname='Abaqus_stress_field_output.txt', dtype='float',
+                       usecols=(1,3,5), skiprows=1819, max_rows=864)
+
+
+
+
+
+# %%
