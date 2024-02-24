@@ -4,7 +4,7 @@ import numpy as np
 
 def predict_stress(Pmax, model, scaled_inputs, normalisation_params):
     #predciting L at each epoch - overwrites but that's okay because i only want last epoch
-    L_epoch = model.predict_on_batch(scaled_inputs)*Pmax
+    L_epoch = model.predict_on_batch(scaled_inputs)
 
     #Calculates L and LT as tensors
     L_epoch_tensor = tf.convert_to_tensor(L_epoch, dtype=tf.float32)# size: (8640,3,3) 

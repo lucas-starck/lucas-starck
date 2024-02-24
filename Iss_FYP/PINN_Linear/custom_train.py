@@ -19,10 +19,14 @@ def custom_train(scaled_inputs, model, N_epochs=500, ):
         epoch_start = timeit.default_timer() 
 
         total_loss = 0.0 # sum of loss of all batches in this epoch
-        print('Epoch number: ', epoch) ; print('')
 
         # Train all 10 timesteps at once (one batch of 8640 records)
         loss = model.train_on_batch(x=scaled_inputs, y=scaled_inputs)
+
+        # Print epoch number (factors of 10 only)
+        if epoch%10 == 0:
+            print('Epoch number: ', epoch)
+            print('RMSE:',loss) ; print('')
         
         # Track loss and time of all epochs for plotting
         epoch_loss_list.append(loss) 

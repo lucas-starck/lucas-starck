@@ -35,7 +35,7 @@ model.summary()
 #%%
 #Calling create model amd compiling model with optimizer
 
-epochs = 500
+epochs = 60
 
 model.compile(optimizer = tf.keras.optimizers.Adam(learning_rate = 0.01), 
           loss = custom_loss_with_params(external_work = external_work, 

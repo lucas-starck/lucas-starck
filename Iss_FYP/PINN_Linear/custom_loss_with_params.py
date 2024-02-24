@@ -61,11 +61,8 @@ def custom_loss_with_params(external_work, normalisation_params, element_vol, N_
                 
             # Calculate Loss for batch: 
             #   Difference between internal (strain energy) and external work (F*d)
-            Energy_difference_batch = tf.abs((external_work[batch_number]/Pmax)-((strain_energy_batch)/Pmax))
-            scaled_internal_energy = strain_energy_batch/Pmax
-            scaled_external_work = external_work[batch_number]/Pmax
-            #print('Scaled Internal work          - batch',batch_number,':', scaled_internal_energy[0][0].numpy())
-            #print('Scaled External work (F x d)  - batch',batch_number,':', scaled_external_work.numpy()) 
+            #   Currently, a scaling of Pmax is being applied to internal and external work
+            Energy_difference_batch = tf.abs((external_work[batch_number])-((strain_energy_batch)))
             # Add batch energy difference to total epoch energy difference
             # Accumulate Energy_difference_batch to the array
             Energy_difference_epoch.append(Energy_difference_batch)
@@ -74,7 +71,7 @@ def custom_loss_with_params(external_work, normalisation_params, element_vol, N_
             
         #print(Energy_difference_epoch_total.shape)
         rmse = tf.sqrt(tf.reduce_mean(tf.square(Energy_difference_epoch_total)))
-        print('RMSE:', np.array(rmse)); print(' ') # print newline
+        #print('RMSE:', np.array(rmse)); print(' ') # print newline
 
         return rmse     
 
