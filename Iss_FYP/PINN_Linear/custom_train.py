@@ -25,8 +25,8 @@ def custom_train(scaled_inputs, model, N_epochs=500, ):
 
         # Print epoch number (factors of 10 only)
         if epoch%10 == 0:
-            print('Epoch number: ', epoch)
-            print('RMSE:',loss) ; print('')
+            print('Epoch number:    ', epoch)
+            print('RMSE:            ',round(loss,2)) ; print('')
         
         # Track loss and time of all epochs for plotting
         epoch_loss_list.append(loss) 

@@ -7,7 +7,7 @@ import tensorflow as tf
 # Extracting FEA stress output
 def import_data():
     #importing coordinates and number of elements
-    root_file_path = '/Users/lucasastarck/Documents/Data Science/Coding/lucas-starck/Iss_FYP/PINN_Linear/FEA_data/'
+    root_file_path = 'FEA_data/'
     inp_file_path = root_file_path+'Plate_hole_1.inp'
     target_section = '*Node'
     columns_to_load = [1, 2]

@@ -21,14 +21,14 @@ def plot_stress_contours(x_coords, y_coords, stress, N):
 
 
     #creating a grid for the countour plot
-    x_grid = np.linspace(-50, 50, num=1000)  #L=100mm
-    y_grid = np.linspace(-20, 20, num=400)    #W=40mm
+    x_grid = np.linspace(-50, 50, num=1000)     #L=100mm
+    y_grid = np.linspace(-20, 20, num=400)      #W=40mm
     x_grid, y_grid = np.meshgrid(x_grid, y_grid)
 
     #extracting final batch stress prediction
-    s11 = stress[:N, 0]  # final batch
-    s22 = stress[:N, 1] 
-    s12 = stress[:N:, 2] 
+    s11 = stress[-N:, 0]  # final batch
+    s22 = stress[-N:, 1] 
+    s12 = stress[-N:, 2] 
     #s11 /=1e6
 
     #converting the stress to a tensor and reshaping to a 1d array
