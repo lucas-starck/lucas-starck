@@ -2,6 +2,7 @@
 #Imports
 import numpy as np
 import tensorflow as tf
+from math import ceil, floor
 import os, sys, time
 from glob import glob
 import pandas as pd
@@ -15,7 +16,7 @@ tf.config.run_functions_eagerly(True)
 
 
 #%%###########################################################################################################################
-# Extracting FEA stress output
+# Extracting FEA stress outputx
 
 #importing coordinates and number of elements
 root_file_path = '/Users/lucasastarck/Documents/Data Science/Coding/lucas-starck/Iss_FYP/PINN_Linear/FEA_data'
@@ -49,8 +50,8 @@ with open(inp_file_path, 'r') as inp_file:
 x_coords = [entry[0] for entry in nodal_data]
 y_coords = [entry[1] for entry in nodal_data]
 
-
-no_batches = 10
+'''NEED TO MAKE THIS A DYNAMIC VALUE'''
+no_batches = 14
 N=len(x_coords)
 
 #outputting stress and strain data from fea
@@ -90,7 +91,7 @@ Exx_data = np.exp(final_data_strain[:, 0]) - 1
 Eyy_data = np.exp(final_data_strain[:, 1]) - 1
 Exy_data = np.exp(final_data_strain[:, 2]) - 1
 
-print((Exx_data).shape)
+print('Input array length:',Exx_data.shape)
 
 Sxx_data = final_data_stress[:, 0]
 Syy_data = final_data_stress[:, 1]
@@ -129,12 +130,53 @@ external_work =0.5* (P_data * Ux_data) # gives a vector of external work values 
 print('External work: '); print(external_work); print('')
 
 
+
+
+#%%##########################################################################################################################
+# Creating training and validation datasets
+
+''' The val_spacing, val_n and val_first_t are not working correctly yet for different no_batches '''
+# Split train and validation data
+val_ratio = 0.2 # proportion of dataset reserved for validation
+val_N = ceil(no_batches*val_ratio) # number of timesteps reserved for validation
+val_spacing = floor((no_batches-1)/val_N) # number of timesteps between validation batches
+val_first_T = floor( ( no_batches - val_spacing*(val_N) )/2. +val_spacing/2. ) # timestep number of first validation batch
+
+# Create Val & Train idx list
+val_idx = []
+train_idx = []
+for i in range(0,val_N):
+    val_idx += [val_first_T + i*val_spacing - 1] # subtract 1 to make indexing zero-based
+for i in range(0,no_batches):
+    if i in val_idx:
+        continue
+    else:
+        train_idx += [i]
+
+# Extract Train & Val dataset
+scaled_inputs_val = tf.reshape(tf.constant([], dtype=tf.float32),[0,3]) # initialise
+for idx in val_idx:
+    scaled_inputs_val = tf.concat([ scaled_inputs_val, tf.slice(scaled_inputs, [idx*N, 0], [N, 3]) ],axis=0)
+
+scaled_inputs_train = tf.reshape(tf.constant([], dtype=tf.float32),[0,3]) # initialise
+for idx in train_idx:
+    scaled_inputs_train = tf.concat([ scaled_inputs_train, tf.slice(scaled_inputs, [idx*N, 0], [N, 3]) ],axis=0)
+
+
+
+
 #%%##########################################################################################################################
 #Designing custom loss function
 #Wrapper function
-def custom_loss_with_params(external_work, normalisation_params, element_vol, N_per_batch):
+def custom_loss_with_params(external_work, normalisation_params, element_vol, N_per_batch, train_idx, val_idx):
 
-    def custom_loss(inputs_scaled, L):   
+    def custom_loss(inputs_scaled, L):  
+
+        # Determine if epoch is using Train or Validation data
+        if len(inputs_scaled) == len(val_idx)*N_per_batch:
+            external_work_idx = val_idx # using val dataset
+        else:
+            external_work_idx = train_idx # using train dataset
 
         # Un-scaling inputs for physical calculations
         max_inputs, min_inputs = tf.split(normalisation_params, 2)
@@ -161,7 +203,7 @@ def custom_loss_with_params(external_work, normalisation_params, element_vol, N_
                 batch_number = int(batch_idx/N_per_batch) 
                 if batch_idx % N_per_batch != 0: # check that epoch size is divisible by batch size
                     raise ValueError('The number of elements in the epoch',len(inputs_unscaled),'must be divisible by the number of elements in the batch',N_per_batch)
-            print('Batch number: ',batch_number)
+            #print('Batch number: ',batch_number)
 
             # Separating input data into variables
             array_inputs=np.array(input_batch) # do I need this?
@@ -183,13 +225,13 @@ def custom_loss_with_params(external_work, normalisation_params, element_vol, N_
             # Calculate strain energy for batch: 
             #   Matrix multiply E_T * C * E, and dot multiply by element volume, outputting a scalar
             strain_energy_batch = 0.5 * tf.tensordot(vol , tf.matmul(epsilonT_batch, tf.matmul(C_batch, epsilon_batch) ) ,1) / n # scalar value
-            print('Internal work (strain energy) - batch',batch_number,':', strain_energy_batch[0][0].numpy())
-            print('External work (F x d)         - batch',batch_number,':', external_work[batch_number]) 
+            #print('Internal work (strain energy) - batch',batch_number,':', strain_energy_batch[0][0].numpy())
+            #print('External work (F x d)         - batch',batch_number,':', external_work[external_work_idx[batch_number]]) 
                 
             # Calculate Loss for batch: 
             #   Difference between internal (strain energy) and external work (F*d)
-            Energy_difference_batch = tf.abs((external_work[batch_number])-((strain_energy_batch)))
-            print('Energy difference             - batch',batch_number,':',Energy_difference_batch[0][0].numpy()); print('') # print newline
+            Energy_difference_batch = tf.abs((external_work[external_work_idx[batch_number]])-((strain_energy_batch)))
+            #print('Energy difference             - batch',batch_number,':',Energy_difference_batch[0][0].numpy()); print('') # print newline
 
             # Add batch energy difference to total epoch energy difference
             # Accumulate Energy_difference_batch to the array
@@ -197,7 +239,7 @@ def custom_loss_with_params(external_work, normalisation_params, element_vol, N_
             Energy_difference_epoch_total = tf.concat([Energy_difference_epoch], axis=0)
             
             
-        print(Energy_difference_epoch_total.shape)
+        #print(Energy_difference_epoch_total.shape)
         rmse = tf.sqrt(tf.reduce_mean(tf.square(Energy_difference_epoch_total)))
         print('rmse:', rmse); print(' ') # print newline
 
@@ -210,20 +252,6 @@ def custom_loss_with_params(external_work, normalisation_params, element_vol, N_
 # Creating ML Model
 
 def Create_Model(activ, Hidden_layers, node_num1, node_num2):
-    """
-    Creates a Keras sequential model with the specified number of hidden layers and nodes, 
-    with the given activation function for all layers except the output layer, which uses a linear activation.
-    
-    Args:
-        activ (str): the name of the activation function to use in all hidden layers
-        Hidden_layers (int): the number of hidden layers in the model with node_num2 nodes each. 
-                            Total_hidden_layers = Hidden_layers + 1
-        node_num1 (int): the number of nodes in the first hidden layer
-        node_num2 (int): the number of nodes in each subsequent hidden layer
-        
-    Returns:
-        model (tf.keras.Sequential): a Keras sequential model with the specified architecture
-    """
     
     model=tf.keras.Sequential()
 
@@ -249,7 +277,7 @@ def Create_Model(activ, Hidden_layers, node_num1, node_num2):
     return model
 
 
-#%%
+#%%###############################################################################################################
 #Calling create model amd compiling model with optimizer
 
 model = Create_Model('linear', Hidden_layers=2, node_num1=20, node_num2=20)
@@ -258,7 +286,9 @@ model.compile(optimizer = tf.keras.optimizers.Adam(learning_rate = 0.001),
           loss = custom_loss_with_params(external_work = external_work, 
                                          normalisation_params = normalisation_params,
                                          element_vol = element_vol,
-                                         N_per_batch = N))
+                                         N_per_batch = N,
+                                         train_idx = train_idx,
+                                         val_idx = val_idx))
 
 
 
@@ -268,9 +298,9 @@ model.compile(optimizer = tf.keras.optimizers.Adam(learning_rate = 0.001),
 
 epoch_loss_list = []
 epoch_time_list = []
+validation_loss_list = []
 epoch_time_cumsum = 0.
 L_batch_list=[]
-batches_per_epoch = scaled_inputs.shape[0] // N
 batch_size = N
 N_epochs = 500 #500 will converge
 
@@ -289,16 +319,20 @@ for epoch in range(N_epochs):
     print('Epoch number: ', epoch) ; print('')
 
     # Train all 10 timesteps at once (one batch of 8640 records)
-    loss = model.train_on_batch(x=scaled_inputs, y=scaled_inputs)
+    train_tick = 1
+    loss = model.train_on_batch(x=scaled_inputs_train, y=scaled_inputs_train)
+    train_tick = 0
+    validation_loss = model.test_on_batch(x=scaled_inputs_val, y=scaled_inputs_val)
     
     # Track loss and time of all epochs for plotting
     epoch_loss_list.append(loss) 
     epoch_time_cumsum += float(timeit.default_timer() - epoch_start)
     epoch_time_list.append(epoch_time_cumsum)
+    validation_loss_list.append(validation_loss)
 
 
     # Break training if runtime limit is exceeded
-    if epoch_time_cumsum > 200.:
+    if epoch_time_cumsum > 10*60.:
         break
   
 
@@ -343,12 +377,13 @@ fig = plt.figure()
 # Loss vs Epochs subplot
 fig1 = fig.add_subplot(2,1,1)
 N_epochs_range  = np.arange(1, len(epoch_loss_list) + 1)
-fig1.plot(N_epochs_range, epoch_loss_list)
+fig1.plot(N_epochs_range, epoch_loss_list, label='Training Loss')
 fig1.grid()
 fig1.set_ylabel('Training loss')
 fig1.set_xlabel('Epoch number')
 fig1.set_title('Training loss history')
 fig1.set_ylim((0,4e4))
+fig1.plot(N_epochs_range, validation_loss_list, label='Validation Loss', linestyle='--')
 
 print('epochs loss list:', epoch_loss_list)
 
@@ -359,7 +394,8 @@ fig2.semilogy(epoch_time_list, epoch_loss_list)
 fig2.grid()
 fig2.set_ylabel('Training loss')
 fig2.set_xlabel('Runtime')
-fig2.set_ylim((0,4e4))
+fig2.set_ylim((1e1,4e4))
+fig2.plot(epoch_time_list, validation_loss_list, label='Validation Loss', linestyle='--')
 plt.tight_layout()
 
 
@@ -587,3 +623,6 @@ print("Young's Modulus error :", error_YM)
 print("Poisson's Ratio error :", error_PR)
 
 # %%
+
+
+
