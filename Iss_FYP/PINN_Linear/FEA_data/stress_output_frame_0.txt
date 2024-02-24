@@ -1,5 +1,5 @@
 ********************************************************************************
-Field Output Report, written Thu Feb 22 21:47:38 2024
+Field Output Report, written Sat Feb 24 11:10:47 2024
 
 Source 1
 ---------
@@ -18,7 +18,7 @@ Field Output reported at nodes for part: PLATE_1-1
    Averaged at nodes
    Averaging regions: ODB_REGIONS
 
-      Node Label         LE.LE11         LE.LE11         LE.LE22         LE.LE22         LE.LE12         LE.LE12
+      Node Label           S.S11           S.S11           S.S22           S.S22           S.S12           S.S12
                           @Loc 1          @Loc 2          @Loc 1          @Loc 2          @Loc 1          @Loc 2
 -----------------------------------------------------------------------------------------------------------------
                1              0.              0.              0.              0.              0.              0.
